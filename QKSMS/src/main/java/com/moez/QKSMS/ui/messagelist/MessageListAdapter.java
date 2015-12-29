@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.database.Cursor;
+import android.graphics.Bitmap;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.os.Handler;
@@ -22,6 +23,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.RelativeLayout;
 
 import com.android.mms.transaction.Transaction;
@@ -30,6 +32,8 @@ import com.android.mms.transaction.TransactionService;
 import com.android.mms.util.DownloadManager;
 import com.google.android.mms.ContentType;
 import com.google.android.mms.pdu_alt.PduHeaders;
+import com.koushikdutta.async.future.FutureCallback;
+import com.koushikdutta.ion.Ion;
 import com.moez.QKSMS.QKSMSApp;
 import com.moez.QKSMS.R;
 import com.moez.QKSMS.common.emoji.EmojiRegistry;
@@ -54,7 +58,9 @@ import java.util.regex.Pattern;
 
 public class MessageListAdapter extends RecyclerCursorAdapter<MessageListViewHolder, MessageItem> {
     private final String TAG = "MessageListAdapter";
-
+    private static final Pattern urlPattern = Pattern.compile(
+            "\\b(https?:\\/\\/\\S+(?:png|jpe?g|gif)\\S*)\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.MULTILINE | Pattern.DOTALL);
     public static final int INCOMING_ITEM_TYPE_SMS = 0;
     public static final int OUTGOING_ITEM_TYPE_SMS = 1;
     public static final int INCOMING_ITEM_TYPE_MMS = 2;
@@ -363,6 +369,27 @@ public class MessageListAdapter extends RecyclerCursorAdapter<MessageListViewHol
 
         if (!TextUtils.isEmpty(buf)) {
             holder.mBodyTextView.setText(buf);
+            Matcher matcher = urlPattern.matcher(holder.mBodyTextView.getText());
+            if (matcher.find()) { //only find the image to the first link
+                holder.showMmsView(true);
+                int matchStart = matcher.start(1);
+                int matchEnd = matcher.end();
+                String imageUrl = buf.subSequence(matchStart, matchEnd).toString();
+                Log.d("image loading", imageUrl);
+                Ion.with(mContext).load(imageUrl).withBitmap().asBitmap()
+                        .setCallback(new FutureCallback<Bitmap>() {
+                            @Override
+                            public void onCompleted(Exception e, Bitmap result) {
+                                try {
+                                    holder.setImage("url_img" + holder.getItemId(), result);
+                                    Log.d("image", "loaded");
+                                }
+                                catch (NullPointerException imageException) {
+                                    Log.e("could not load image",e.getMessage());
+                                }
+                            }
+                        });
+            }
             LinkifyUtils.addLinks(holder.mBodyTextView);
         }
         holder.mBodyTextView.setVisibility(TextUtils.isEmpty(buf) ? View.GONE : View.VISIBLE);
